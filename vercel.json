@@ -6,18 +6,21 @@
       "use": "@vercel/python"
     },
     {
-      "src": "index.html",
+      "src": "{index.html,css/**,js/**,assets/**}",
       "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    },
-    {
       "src": "/api/(.*)",
       "dest": "/python/app.py"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }

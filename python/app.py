@@ -19,7 +19,11 @@ import scheduler
 from seed import seed
 
 BASE_DIR = Path(__file__).parent
-CONFIG = json.loads((BASE_DIR / "questions.json").read_text(encoding="utf-8"))
+PROJECT_DIR = BASE_DIR.parent
+
+CONFIG = json.loads(
+    (PROJECT_DIR / "json" / "questions.json").read_text(encoding="utf-8")
+)
 QUESTIONS = CONFIG["questions"]
 SPECIALIZATION_MAP = CONFIG["problem_area_to_specialization"]
 RED_FLAGS = CONFIG["red_flags"]

@@ -1465,37 +1465,24 @@ function assignDoctorAndSlot(evaluation, features) {
 
 
   // Match medical department based on clinical symptoms + department flags
-
   let targetDepartment = 'General Medicine';
 
   if (q1Flag === 'cardiac' || q4Id === 'q4-1') {
-
     targetDepartment = 'Cardiology';
-
   } else if (q1Flag === 'respiratory' || s1.includes('breathing') || s2.includes('wheezing')) {
-
     targetDepartment = 'Pulmonology';
-
-  } else if (q1Flag === 'ortho' || s2.includes('joint pain') || s2.includes('body pain')) {
-
+  } else if (q1Flag === 'general' || s1 === 'fever' || s2 === 'chills' || s2 === 'sweating' || s2 === 'body pain') {
+    targetDepartment = 'General Medicine';
+  } else if (q1Flag === 'ortho' || s2.includes('joint pain')) {
     targetDepartment = 'Orthopaedics';
-
   } else if (q1Flag === 'derm') {
-
     targetDepartment = 'Dermatology';
-
   } else if (s1.includes('headache') || s2.includes('dizziness') || s3.includes('blurred vision') || s3.includes('light sensitivity')) {
-
     targetDepartment = 'Neurology';
-
   } else if (s2.includes('stomach pain')) {
-
     targetDepartment = 'Gastroenterology';
-
   } else if (s1.includes('cough') || s2.includes('runny nose') || s3.includes('sneezing')) {
-
     targetDepartment = 'ENT';
-
   }
 
 

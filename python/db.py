@@ -19,7 +19,7 @@ def connect(db_path=None):
 def init_db(db_path=None):
     """Create all tables (safe to run repeatedly)."""
     conn = connect(db_path)
-    conn.executescript((BASE_DIR / "schema.sql").read_text(encoding="utf-8"))
+    conn.executescript((BASE_DIR.parent / "schema.sql").read_text(encoding="utf-8"))
     conn.commit()
     conn.close()
 

@@ -1253,39 +1253,25 @@ const M3_Backend_Service = {
 
   async saveAppointment(newAppointment) {
 
-    if (CONFIG.USE_LIVE_BACKEND) {
-
-      try {
-
-        const response = await fetch(`${CONFIG.M3_API_BASE}/appointments`, {
-
-          method: 'POST',
-
-          headers: { 'Content-Type': 'application/json' },
-
-          body: JSON.stringify(newAppointment)
-
-        });
-
-        if (response.ok) {
-
-          return await response.json();
-
-        }
-
-      } catch (err) {
-
-        console.warn('Backend database unreachable, falling back to localStorage:', err);
-
-      }
-
-    }
-
-    // Fallback: Browser LocalStorage database
-
+    // Always save locally first — never block the UI on backend response
     AppState.appointments.unshift(newAppointment);
 
     saveAppointments();
+
+    // Fire-and-forget to backend (don't await — Render cold start would freeze the page)
+    if (CONFIG.USE_LIVE_BACKEND) {
+
+      fetch(`${CONFIG.M3_API_BASE}/appointments`, {
+
+        method: 'POST',
+
+        headers: { 'Content-Type': 'application/json' },
+
+        body: JSON.stringify(newAppointment)
+
+      }).catch(err => console.warn('Backend appointment sync failed:', err));
+
+    }
 
     return newAppointment;
 
@@ -1631,6 +1617,12 @@ async function startAssessmentProcessing() {
 
     AppState.lastBookedAppointment = assignedApt;
 
+    // Persist to localStorage so result page survives a reload
+
+    try { localStorage.setItem('carepoint_last_apt', JSON.stringify(assignedApt)); } catch(e) {}
+
+    try { localStorage.setItem('carepoint_last_eval', JSON.stringify(evaluation)); } catch(e) {}
+
     await M3_Backend_Service.saveAppointment(assignedApt);
 
   } catch (err) {
@@ -1657,6 +1649,20 @@ async function startAssessmentProcessing() {
 
 
 function renderAssessmentResult() {
+
+  // Restore from localStorage if page was reloaded
+
+  if (!AppState.lastBookedAppointment) {
+
+    try { AppState.lastBookedAppointment = JSON.parse(localStorage.getItem('carepoint_last_apt')); } catch(e) {}
+
+  }
+
+  if (!AppState.currentEvaluation) {
+
+    try { AppState.currentEvaluation = JSON.parse(localStorage.getItem('carepoint_last_eval')); } catch(e) {}
+
+  }
 
   const evalResult = AppState.currentEvaluation || evaluateAssessmentPriority([]);
 

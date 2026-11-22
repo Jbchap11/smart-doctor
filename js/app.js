@@ -1508,11 +1508,51 @@ function assignDoctorAndSlot(evaluation, features) {
 
   // Pick available time slots from matched doctor, or sensible defaults
   const docSlots = (matchedDoc && Array.isArray(matchedDoc.slots) && matchedDoc.slots.length >= 2)
-    ? matchedDoc.slots : ['10:00 AM', '11:30 AM', '02:30 PM', '04:00 PM'];
+    ? matchedDoc.slots : ['10:00 AM', '11:30 AM', '02:30 PM', '04:00 PM', '06:00 PM', '08:00 PM'];
 
-  const todaySlot    = docSlots[0] || '10:00 AM';
-  const tomorrowSlot = docSlots[1] || '02:30 PM';
-  const laterSlot    = docSlots[2] || docSlots[0] || '04:00 PM';
+  // Helper: parse "HH:MM AM/PM" into a Date on a given calendar date
+  function parseSlotOnDate(slotStr, baseDate) {
+    const m = slotStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (!m) return null;
+    let h = parseInt(m[1]), mn = parseInt(m[2]);
+    const ap = m[3].toUpperCase();
+    if (ap === 'PM' && h !== 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    const d = new Date(baseDate);
+    d.setHours(h, mn, 0, 0);
+    return d;
+  }
+
+  // Helper: format a Date as "H:MM AM/PM"
+  function fmtSlotTime(d) {
+    let h = d.getHours(), mn = d.getMinutes();
+    const ap = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${String(mn).padStart(2, '0')} ${ap}`;
+  }
+
+  // Find next available slot on a given day that is at least `bufferMin` from now
+  function nextSlotOnDay(slots, dayDate, bufferMin) {
+    const cutoff = new Date(Date.now() + (bufferMin || 30) * 60000);
+    for (const s of slots) {
+      const t = parseSlotOnDate(s, dayDate);
+      if (t && t > cutoff) return s;
+    }
+    return null;
+  }
+
+  // Generate a rounded-up time (nearest 30 min) `bufferMin` from now
+  function generateFallbackTime(bufferMin) {
+    const d = new Date(Date.now() + (bufferMin || 60) * 60000);
+    const mins = d.getMinutes();
+    d.setMinutes(mins < 30 ? 30 : 0, 0, 0);
+    if (mins >= 30) d.setHours(d.getHours() + 1);
+    return fmtSlotTime(d);
+  }
+
+  const todaySlot    = nextSlotOnDay(docSlots, todayDate, 60) || generateFallbackTime(60);
+  const tomorrowSlot = nextSlotOnDay(docSlots, tomorrowDate, -1) || docSlots[0] || '10:00 AM';
+  const laterSlot    = nextSlotOnDay(docSlots, dayAfterDate, -1) || docSlots[0] || '10:00 AM';
 
   const priorityLevel = evaluation ? (evaluation.level || evaluation.urgencyCode) : 'Moderate';
   const isHighPriority = priorityLevel === 'Very Urgent' || priorityLevel === 'High';

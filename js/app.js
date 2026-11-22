@@ -1676,6 +1676,12 @@ function renderAssessmentResult() {
 
   const headerClass = evalResult.badgeClass;
 
+  // Priority flags needed for slot-choice rendering
+  const priorityLevel   = evalResult ? (evalResult.level || evalResult.urgencyCode) : 'Moderate';
+  const isHighPriority  = priorityLevel === 'Very Urgent' || priorityLevel === 'High';
+  const isMedPriority   = priorityLevel === 'Moderate'   || priorityLevel === 'Medium';
+  const isLowPriority   = !isHighPriority && !isMedPriority;
+
 
 
   resultCard.innerHTML = `

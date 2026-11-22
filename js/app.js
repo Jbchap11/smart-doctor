@@ -960,14 +960,18 @@ function renderAssessmentQuestion() {
 
 
 
+// Set this to your deployed Render service URL
+const RENDER_BACKEND_URL = 'https://smart-doctor-tz81.onrender.com';
+
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const API_BASE_URL = (isLocal || !RENDER_BACKEND_URL) 
+  ? 'http://localhost:5000/api' 
+  : `${RENDER_BACKEND_URL.replace(/\/+$/, '')}/api`;
+
 const CONFIG = {
-
-  USE_LIVE_BACKEND: false,
-
-  M3_API_BASE: 'http://localhost:5000/api',
-
-  M1_ML_ENDPOINT: 'http://localhost:5000/api/triage/evaluate'
-
+  USE_LIVE_BACKEND: true,
+  M3_API_BASE: API_BASE_URL,
+  M1_ML_ENDPOINT: `${API_BASE_URL}/triage/evaluate`
 };
 
 

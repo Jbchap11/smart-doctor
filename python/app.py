@@ -11,6 +11,7 @@ from functools import wraps
 from pathlib import Path
 
 from flask import Flask, g, jsonify, request, session
+from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import db as dbm
@@ -32,6 +33,7 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 def create_app(db_path=None, now_func=datetime.now):
     app = Flask(__name__)
+    CORS(app, supports_credentials=True, origins="*")
     app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me")
     app.config["DB_PATH"] = db_path or dbm.DEFAULT_DB
     app.config["NOW"] = now_func
@@ -64,6 +66,35 @@ def create_app(db_path=None, now_func=datetime.now):
     @app.get("/api/health")
     def health():
         return jsonify({"status": "ok", "real_ml_model": ml_interface.using_real_model()})
+
+    @app.post("/api/triage/evaluate")
+    @app.post("/api/triage/predict")
+    def triage_evaluate():
+        data = request.get_json(silent=True) or {}
+        try:
+            import sys
+            src_dir = str(BASE_DIR.parent / "src")
+            if src_dir not in sys.path:
+                sys.path.insert(0, src_dir)
+            from predict import predict_urgency
+            res = predict_urgency(data)
+            return jsonify({
+                "urgency": res.get("urgency_level", "Moderate"),
+                "priority": res.get("urgency_level", "Moderate"),
+                "code": res.get("urgency_code", 1),
+                "disclaimer": res.get("disclaimer")
+            })
+        except Exception as e:
+            try:
+                fallback_label = ml_interface.predict_urgency(data)
+                return jsonify({
+                    "urgency": fallback_label,
+                    "priority": fallback_label,
+                    "code": 2 if fallback_label == "Very Urgent" else (1 if fallback_label == "Moderate" else 0),
+                    "note": f"Handled via rule fallback: {str(e)}"
+                })
+            except Exception:
+                return jsonify({"error": str(e)}), 400
 
     @app.get("/api/questions")
     def questions():

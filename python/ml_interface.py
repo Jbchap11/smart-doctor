@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
-MODEL_PATH = BASE_DIR / "model.joblib"
+MODEL_PATH = BASE_DIR.parent / "models" / "trained_model.joblib"
 LABELS = ("Very Urgent", "Moderate", "Not Urgent")
 
 _model = None

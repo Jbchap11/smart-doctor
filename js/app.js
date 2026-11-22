@@ -62,7 +62,7 @@ function initAppState() {
 
   if (!AppState.patientProfile || typeof AppState.patientProfile !== 'object' || !AppState.patientProfile.name) {
 
-    AppState.patientProfile = { ...(typeof INITIAL_PATIENT !== 'undefined' ? INITIAL_PATIENT : { name: 'John Doe', age: 38, gender: 'Male', phone: '+91 98765 43210', email: 'john.doe@example.com' }) };
+    AppState.patientProfile = null; // No demo bleed — real login/signup required
 
   }
 
@@ -88,7 +88,11 @@ function initAppState() {
 
 
 
-  const storedApts = localStorage.getItem('carepoint_appointments');
+  const aptEmail = (AppState.patientProfile && AppState.patientProfile.email) ? AppState.patientProfile.email : 'guest';
+
+  const aptKey = 'carepoint_appointments_' + aptEmail;
+
+  const storedApts = localStorage.getItem(aptKey);
 
   try {
 
@@ -100,9 +104,13 @@ function initAppState() {
 
   }
 
-  if (!Array.isArray(AppState.appointments) || AppState.appointments.length === 0) {
+  if (!Array.isArray(AppState.appointments)) {
 
-    AppState.appointments = [ ...(typeof INITIAL_APPOINTMENTS !== 'undefined' ? INITIAL_APPOINTMENTS : []) ];
+    // For John Doe demo account: seed with demo appointments; for everyone else: empty array
+
+    const isDemoUser = AppState.patientProfile && AppState.patientProfile.email === 'john.doe@example.com';
+
+    AppState.appointments = isDemoUser ? [ ...(typeof INITIAL_APPOINTMENTS !== 'undefined' ? INITIAL_APPOINTMENTS : []) ] : [];
 
   }
 
@@ -126,7 +134,9 @@ function initAppState() {
 
 function saveAppointments() {
 
-  localStorage.setItem('carepoint_appointments', JSON.stringify(AppState.appointments));
+  const aptEmail = (AppState.patientProfile && AppState.patientProfile.email) ? AppState.patientProfile.email : 'guest';
+
+  localStorage.setItem('carepoint_appointments_' + aptEmail, JSON.stringify(AppState.appointments));
 
 }
 
@@ -630,7 +640,7 @@ function renderPatientDashboard() {
 
   if (greetingEl) {
 
-    greetingEl.textContent = AppState.patientProfile.name.split(' ')[0] || 'Patient';
+    greetingEl.textContent = (AppState.patientProfile && AppState.patientProfile.name) ? AppState.patientProfile.name.split(' ')[0] : 'Patient';
 
   }
 
@@ -1187,75 +1197,40 @@ const M1_ML_Service = {
     const rawPriority = m1Response.urgency || m1Response.priority || m1Response.prediction || 'Moderate';
 
     if (rawPriority === 'High' || rawPriority === 'Very Urgent') {
-
       return {
-
         level: 'Very Urgent',
-
         badgeClass: 'urgent',
-
         color: '#DC2626',
-
         bgTint: '#FEE2E2',
-
         headline: 'High-priority appointment',
-
-        recommendedWindow: 'Today or Tomorrow',
-
-        description: 'Your responses indicate symptoms that require prompt clinical review. We strongly advise securing a consultation within 24 hours.',
-
+        recommendedWindow: 'Today',
+        description: 'Symptoms require immediate review today. Consultation is scheduled strictly for today without delay.',
         urgencyCode: 'High',
-
         features: payload
-
       };
-
     } else if (rawPriority === 'Medium' || rawPriority === 'Moderate') {
-
       return {
-
         level: 'Moderate',
-
         badgeClass: 'moderate',
-
         color: '#D97706',
-
         bgTint: '#FEF3C7',
-
         headline: 'Medium-priority appointment',
-
-        recommendedWindow: 'Tomorrow or Later',
-
-        description: 'Your assessment highlights noticeable symptoms that should be examined by a specialist within 1 to 2 days.',
-
+        recommendedWindow: 'Today or Tomorrow',
+        description: 'Symptoms should be examined promptly. Choose between a consultation today or tomorrow.',
         urgencyCode: 'Medium',
-
         features: payload
-
       };
-
     } else {
-
       return {
-
         level: 'Not Urgent',
-
         badgeClass: 'not-urgent',
-
         color: '#059669',
-
         bgTint: '#D1FAE5',
-
         headline: 'Lower-priority appointment',
-
-        recommendedWindow: 'Later this week',
-
-        description: 'Your responses do not indicate an acute emergency. You can comfortably schedule a routine or follow-up slot anytime this week.',
-
+        recommendedWindow: 'Day after tomorrow or later this week',
+        description: 'Non-acute condition. Choose day after tomorrow or select your preferred date later this week.',
         urgencyCode: 'Low',
-
         features: payload
-
       };
 
     }
@@ -1527,91 +1502,93 @@ function assignDoctorAndSlot(evaluation, features) {
 
 
 
-  // Build two slot options: tomorrow & later (day after tomorrow)
+  // Build priority-based slot options
   const today = new Date();
 
   function fmtDate(d) {
     return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
   }
+  function fmtISO(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
 
+  const todayDate    = new Date(today);
   const tomorrowDate = new Date(today); tomorrowDate.setDate(today.getDate() + 1);
-  const laterDate    = new Date(today); laterDate.setDate(today.getDate() + 2);
+  const dayAfterDate = new Date(today); dayAfterDate.setDate(today.getDate() + 2);
+  const laterDate    = new Date(today); laterDate.setDate(today.getDate() + 4);
 
   // Pick available time slots from matched doctor, or sensible defaults
   const docSlots = (matchedDoc && Array.isArray(matchedDoc.slots) && matchedDoc.slots.length >= 2)
-    ? matchedDoc.slots : ['10:00 AM', '02:30 PM', '04:00 PM'];
+    ? matchedDoc.slots : ['10:00 AM', '11:30 AM', '02:30 PM', '04:00 PM'];
 
-  const tomorrowSlot = docSlots[0] || '10:00 AM';
-  const laterSlot    = docSlots[1] || '02:30 PM';
+  const todaySlot    = docSlots[0] || '10:00 AM';
+  const tomorrowSlot = docSlots[1] || '02:30 PM';
+  const laterSlot    = docSlots[2] || docSlots[0] || '04:00 PM';
 
-  let windowBadge = 'Tomorrow or Later';
-  if (evaluation && evaluation.level === 'Very Urgent') {
-    windowBadge = 'Tomorrow (Urgent)';
-  } else if (evaluation && evaluation.level === 'Moderate') {
-    windowBadge = 'Tomorrow or Day After';
+  const priorityLevel = evaluation ? (evaluation.level || evaluation.urgencyCode) : 'Moderate';
+  const isHighPriority = priorityLevel === 'Very Urgent' || priorityLevel === 'High';
+  const isMedPriority  = priorityLevel === 'Moderate' || priorityLevel === 'Medium';
+
+  let windowBadge = 'Today';
+  let scheduledDate = fmtDate(todayDate);
+  let scheduledTime = todaySlot;
+  let slotOptions = {};
+
+  if (isHighPriority) {
+    windowBadge = 'Today Only (High Priority)';
+    scheduledDate = fmtDate(todayDate);
+    scheduledTime = todaySlot;
+    slotOptions = {
+      today: { label: 'Today Only', date: fmtDate(todayDate), time: todaySlot, iso: fmtISO(todayDate) }
+    };
+  } else if (isMedPriority) {
+    windowBadge = 'Today or Tomorrow';
+    scheduledDate = fmtDate(todayDate);
+    scheduledTime = todaySlot;
+    slotOptions = {
+      today:    { label: 'Today',    date: fmtDate(todayDate),    time: todaySlot,    iso: fmtISO(todayDate) },
+      tomorrow: { label: 'Tomorrow', date: fmtDate(tomorrowDate), time: tomorrowSlot, iso: fmtISO(tomorrowDate) }
+    };
+  } else {
+    windowBadge = 'Day After Tomorrow or Later';
+    scheduledDate = fmtDate(dayAfterDate);
+    scheduledTime = laterSlot;
+    slotOptions = {
+      dayAfter: { label: 'Day After Tomorrow', date: fmtDate(dayAfterDate), time: laterSlot,    iso: fmtISO(dayAfterDate) },
+      custom:   { label: 'Later Date',         date: fmtDate(laterDate),    time: tomorrowSlot, iso: fmtISO(laterDate) }
+    };
   }
-
-  // Default to tomorrow slot (will be overridden when patient picks)
-  let scheduledDate = fmtDate(tomorrowDate);
-  let scheduledTime = tomorrowSlot;
-
-
 
   const aptId = `APT${Math.floor(10000 + Math.random() * 90000)}`;
 
   const patient = AppState.patientProfile || (typeof INITIAL_PATIENT !== 'undefined' ? INITIAL_PATIENT : {});
 
-
-
   const newAppointment = {
-
     id: aptId,
-
     patientName: patient.name || 'John Doe',
-
     patientAge: features.age || patient.age || 38,
-
     patientGender: features.gender || patient.gender || 'Male',
-
     patientPhone: patient.phone || '+91 98765 43210',
-
     doctorId: matchedDoc.id || 'doc-1',
-
     doctorName: matchedDoc.name || 'Dr. Meera Iyer',
-
     doctorSpecialisation: matchedDoc.specialisation || 'Cardiologist',
-
     department: matchedDoc.department || matchedDoc.specialisation || 'Cardiology',
-
     doctorAvatar: matchedDoc.avatar || 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=400&q=80',
-
     doctorQualification: matchedDoc.qualification || 'MD (Cardiology), FACC',
-
     doctorExperience: matchedDoc.experienceYears || 15,
-
     date: scheduledDate,
-
     time: scheduledTime,
-
     room: `OPD Wing Room ${Math.floor(201 + Math.random() * 15)}`,
-
     priority: evaluation ? evaluation.level : 'Moderate',
-
     priorityColor: evaluation ? evaluation.badgeClass : 'moderate',
-
     status: 'Confirmed',
-
     concern: `${s1 ? s1.charAt(0).toUpperCase() + s1.slice(1) : 'Clinical triage review'} (${s2 || 'accompanying symptoms'})`,
-
     urgencyReason: `AI Scheduled Slot (${windowBadge})`,
-
-    slotOptions: {
-      tomorrow: { label: 'Tomorrow', date: fmtDate(tomorrowDate), time: tomorrowSlot },
-      later:    { label: 'Day After Tomorrow', date: fmtDate(laterDate),    time: laterSlot }
-    },
-
+    slotOptions,
     slotChosen: false
-
   };
 
 
@@ -1860,32 +1837,93 @@ function renderAssessmentResult() {
       <div class="result-actions" id="slot-choice-section">
         ${apt && !apt.slotChosen ? `
           <div style="background: #EFF6FF; border: 2px solid var(--c-navy); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.25rem; text-align: left;">
-            <div style="font-weight: 800; color: var(--c-navy); font-size: 1.05rem; margin-bottom: 0.25rem;">📅 Choose Your Consultation Window</div>
-            <p style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 1.25rem;">Our AI triage engine has matched your condition to <strong>${apt.doctorName}</strong>. Choose between tomorrow or later based on availability:</p>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
-              <button type="button" onclick="confirmSlotChoice('${apt.id}', 'tomorrow')"
-                style="border: 2px solid var(--c-navy); border-radius: var(--radius-md); padding: 1.25rem 1rem; background: #ffffff; cursor: pointer; text-align: center; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,128,0.06);"
-                onmouseover="this.style.background='#EEF2FF'; this.style.borderColor='#000080';" onmouseout="this.style.background='#ffffff'; this.style.borderColor='var(--c-navy)';">
-                <div style="display: inline-block; background: #DC2626; color: #fff; font-size: 0.6875rem; font-weight: 800; padding: 0.2rem 0.55rem; border-radius: 999px; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;">Priority Option</div>
-                <div style="font-size: 1.5rem; margin-bottom: 0.35rem;">🌅</div>
-                <div style="font-weight: 800; color: var(--c-navy); font-size: 1rem;">Tomorrow</div>
-                <div style="font-size: 0.8125rem; color: var(--c-steel); margin-top: 0.25rem;">${apt.slotOptions.tomorrow.date}</div>
-                <div style="font-size: 0.9375rem; font-weight: 800; color: #059669; margin-top: 0.35rem;">⏰ ${apt.slotOptions.tomorrow.time}</div>
-                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">${apt.doctorName} • ${apt.room}</div>
-                <div style="margin-top: 0.75rem; background: var(--c-navy); color: #fff; padding: 0.45rem 0.75rem; border-radius: 4px; font-size: 0.8125rem; font-weight: 700;">Select Tomorrow →</div>
-              </button>
-              <button type="button" onclick="confirmSlotChoice('${apt.id}', 'later')"
-                style="border: 2px solid var(--surface-border); border-radius: var(--radius-md); padding: 1.25rem 1rem; background: #ffffff; cursor: pointer; text-align: center; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.04);"
-                onmouseover="this.style.background='#F0FDF4'; this.style.borderColor='#059669';" onmouseout="this.style.background='#ffffff'; this.style.borderColor='var(--surface-border)';">
-                <div style="display: inline-block; background: #059669; color: #fff; font-size: 0.6875rem; font-weight: 800; padding: 0.2rem 0.55rem; border-radius: 999px; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;">Later Slot</div>
-                <div style="font-size: 1.5rem; margin-bottom: 0.35rem;">📆</div>
-                <div style="font-weight: 800; color: var(--c-navy); font-size: 1rem;">Day After Tomorrow</div>
-                <div style="font-size: 0.8125rem; color: var(--c-steel); margin-top: 0.25rem;">${apt.slotOptions.later.date}</div>
-                <div style="font-size: 0.9375rem; font-weight: 800; color: #059669; margin-top: 0.35rem;">⏰ ${apt.slotOptions.later.time}</div>
-                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">${apt.doctorName} • ${apt.room}</div>
-                <div style="margin-top: 0.75rem; background: var(--c-steel); color: #fff; padding: 0.45rem 0.75rem; border-radius: 4px; font-size: 0.8125rem; font-weight: 700;">Select Day After →</div>
-              </button>
+            <div style="font-weight: 800; color: ${isHighPriority ? '#DC2626' : 'var(--c-navy)'}; font-size: 1.05rem; margin-bottom: 0.25rem;">
+              ${isHighPriority ? '🚨 Immediate Appointment Today (High Priority)' : (isMedPriority ? '📅 Choose Consultation Day: Today or Tomorrow' : '📆 Routine Consultation: Day After Tomorrow or Pick a Date')}
             </div>
+            <p style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+              ${isHighPriority 
+                ? `Clinical triage has evaluated your symptoms as <strong>High Priority</strong>. Consultations are scheduled <strong>strictly for today</strong> with <strong>${apt.doctorName}</strong> — no delayed dates permitted:`
+                : (isMedPriority 
+                  ? `Medium urgency assessment matched to <strong>${apt.doctorName}</strong>. Select your consultation slot between <strong>Today</strong> or <strong>Tomorrow</strong>:`
+                  : `Routine review matched to <strong>${apt.doctorName}</strong>. Select <strong>Day After Tomorrow</strong> or pick a custom date later this week:`)}
+            </p>
+
+            ${isHighPriority ? `
+              <div style="max-width: 380px; margin: 0 auto;">
+                <button type="button" onclick="confirmSlotChoice('${apt.id}', 'today')"
+                  style="width: 100%; border: 2px solid #DC2626; border-radius: var(--radius-md); padding: 1.25rem 1rem; background: #FEF2F2; cursor: pointer; text-align: center; transition: all 0.2s; box-shadow: 0 4px 12px rgba(220,38,38,0.15);"
+                  onmouseover="this.style.background='#FEE2E2';" onmouseout="this.style.background='#FEF2F2';">
+                  <div style="display: inline-block; background: #DC2626; color: #fff; font-size: 0.6875rem; font-weight: 800; padding: 0.2rem 0.55rem; border-radius: 999px; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;">🚨 Today Only — Single Priority Slot</div>
+                  <div style="font-size: 1.5rem; margin-bottom: 0.35rem;">⚡</div>
+                  <div style="font-weight: 800; color: #991B1B; font-size: 1.1rem;">Today</div>
+                  <div style="font-size: 0.8125rem; color: #7F1D1D; margin-top: 0.25rem; font-weight: 600;">${apt.slotOptions?.today?.date || apt.date}</div>
+                  <div style="font-size: 0.9375rem; font-weight: 800; color: #DC2626; margin-top: 0.35rem;">⏰ ${apt.slotOptions?.today?.time || apt.time}</div>
+                  <div style="font-size: 0.75rem; color: #991B1B; margin-top: 0.35rem;">${apt.doctorName} • ${apt.room}</div>
+                  <div style="margin-top: 0.75rem; background: #DC2626; color: #fff; padding: 0.55rem 0.85rem; border-radius: 4px; font-size: 0.8125rem; font-weight: 700;">Lock Today's Appointment →</div>
+                </button>
+              </div>
+            ` : ''}
+
+            ${isMedPriority ? `
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+                <button type="button" onclick="confirmSlotChoice('${apt.id}', 'today')"
+                  style="border: 2px solid var(--c-navy); border-radius: var(--radius-md); padding: 1.25rem 1rem; background: #ffffff; cursor: pointer; text-align: center; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,128,0.06);"
+                  onmouseover="this.style.background='#EEF2FF'; this.style.borderColor='#000080';" onmouseout="this.style.background='#ffffff'; this.style.borderColor='var(--c-navy)';">
+                  <div style="display: inline-block; background: #D97706; color: #fff; font-size: 0.6875rem; font-weight: 800; padding: 0.2rem 0.55rem; border-radius: 999px; text-transform: uppercase; margin-bottom: 0.5rem;">Earliest Slot</div>
+                  <div style="font-size: 1.5rem; margin-bottom: 0.35rem;">⚡</div>
+                  <div style="font-weight: 800; color: var(--c-navy); font-size: 1rem;">Today</div>
+                  <div style="font-size: 0.8125rem; color: var(--c-steel); margin-top: 0.25rem;">${apt.slotOptions?.today?.date || apt.date}</div>
+                  <div style="font-size: 0.9375rem; font-weight: 800; color: #059669; margin-top: 0.35rem;">⏰ ${apt.slotOptions?.today?.time || apt.time}</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">${apt.doctorName} • ${apt.room}</div>
+                  <div style="margin-top: 0.75rem; background: var(--c-navy); color: #fff; padding: 0.45rem 0.75rem; border-radius: 4px; font-size: 0.8125rem; font-weight: 700;">Select Today →</div>
+                </button>
+                <button type="button" onclick="confirmSlotChoice('${apt.id}', 'tomorrow')"
+                  style="border: 2px solid var(--surface-border); border-radius: var(--radius-md); padding: 1.25rem 1rem; background: #ffffff; cursor: pointer; text-align: center; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.04);"
+                  onmouseover="this.style.background='#F0FDF4'; this.style.borderColor='#059669';" onmouseout="this.style.background='#ffffff'; this.style.borderColor='var(--surface-border)';">
+                  <div style="display: inline-block; background: #059669; color: #fff; font-size: 0.6875rem; font-weight: 800; padding: 0.2rem 0.55rem; border-radius: 999px; text-transform: uppercase; margin-bottom: 0.5rem;">Next Day Slot</div>
+                  <div style="font-size: 1.5rem; margin-bottom: 0.35rem;">🌅</div>
+                  <div style="font-weight: 800; color: var(--c-navy); font-size: 1rem;">Tomorrow</div>
+                  <div style="font-size: 0.8125rem; color: var(--c-steel); margin-top: 0.25rem;">${apt.slotOptions?.tomorrow?.date || ''}</div>
+                  <div style="font-size: 0.9375rem; font-weight: 800; color: #059669; margin-top: 0.35rem;">⏰ ${apt.slotOptions?.tomorrow?.time || apt.time}</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">${apt.doctorName} • ${apt.room}</div>
+                  <div style="margin-top: 0.75rem; background: var(--c-steel); color: #fff; padding: 0.45rem 0.75rem; border-radius: 4px; font-size: 0.8125rem; font-weight: 700;">Select Tomorrow →</div>
+                </button>
+              </div>
+            ` : ''}
+
+            ${isLowPriority ? `
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem;">
+                <button type="button" onclick="confirmSlotChoice('${apt.id}', 'dayAfter')"
+                  style="border: 2px solid var(--c-navy); border-radius: var(--radius-md); padding: 1.25rem 1rem; background: #ffffff; cursor: pointer; text-align: center; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,128,0.06);"
+                  onmouseover="this.style.background='#EEF2FF'; this.style.borderColor='#000080';" onmouseout="this.style.background='#ffffff'; this.style.borderColor='var(--c-navy)';">
+                  <div style="display: inline-block; background: #059669; color: #fff; font-size: 0.6875rem; font-weight: 800; padding: 0.2rem 0.55rem; border-radius: 999px; text-transform: uppercase; margin-bottom: 0.5rem;">Recommended</div>
+                  <div style="font-size: 1.5rem; margin-bottom: 0.35rem;">📆</div>
+                  <div style="font-weight: 800; color: var(--c-navy); font-size: 1rem;">Day After Tomorrow</div>
+                  <div style="font-size: 0.8125rem; color: var(--c-steel); margin-top: 0.25rem;">${apt.slotOptions?.dayAfter?.date || apt.date}</div>
+                  <div style="font-size: 0.9375rem; font-weight: 800; color: #059669; margin-top: 0.35rem;">⏰ ${apt.slotOptions?.dayAfter?.time || apt.time}</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">${apt.doctorName} • ${apt.room}</div>
+                  <div style="margin-top: 0.75rem; background: var(--c-navy); color: #fff; padding: 0.45rem 0.75rem; border-radius: 4px; font-size: 0.8125rem; font-weight: 700;">Select Day After →</div>
+                </button>
+                <div style="border: 2px solid var(--surface-border); border-radius: var(--radius-md); padding: 1.25rem 1rem; background: #FAFAFA; text-align: center; display: flex; flex-direction: column; justify-content: space-between;">
+                  <div>
+                    <div style="display: inline-block; background: var(--c-steel); color: #fff; font-size: 0.6875rem; font-weight: 800; padding: 0.2rem 0.55rem; border-radius: 999px; text-transform: uppercase; margin-bottom: 0.5rem;">Flexible Option</div>
+                    <div style="font-size: 1.5rem; margin-bottom: 0.35rem;">📅</div>
+                    <div style="font-weight: 800; color: var(--c-navy); font-size: 1rem;">Choose Later Date</div>
+                    <div style="margin: 0.6rem 0;">
+                      <input type="date" id="custom-slot-date" min="${apt.slotOptions?.dayAfter?.iso || ''}" value="${apt.slotOptions?.custom?.iso || ''}"
+                        style="padding: 0.45rem 0.6rem; border: 1.5px solid var(--c-navy); border-radius: 4px; font-size: 0.875rem; width: 90%; max-width: 200px; text-align: center; color: var(--c-navy); font-weight: 700; background: #ffffff;">
+                    </div>
+                    <div style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 0.4rem;">Slot: ⏰ ${apt.slotOptions?.dayAfter?.time || '02:30 PM'}</div>
+                  </div>
+                  <button type="button" onclick="confirmCustomDateChoice('${apt.id}', '${apt.slotOptions?.dayAfter?.time || '02:30 PM'}')"
+                    style="margin-top: 0.5rem; background: #059669; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.8125rem; font-weight: 700; cursor: pointer; width: 100%; transition: all 0.2s;"
+                    onmouseover="this.style.background='#047857';" onmouseout="this.style.background='#059669';">
+                    Lock Custom Date →
+                  </button>
+                </div>
+              </div>
+            ` : ''}
+
           </div>
         ` : `
           <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: var(--radius-md); padding: 0.75rem 1rem; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; text-align: center;">
@@ -1918,7 +1956,7 @@ function renderAssessmentResult() {
 
 
 
-function confirmSlotChoice(aptId, slotKey) {
+function confirmSlotChoice(aptId, slotKey, customDate, customTime) {
   // Show reloading state immediately
   const container = document.getElementById('slot-choice-section');
   if (container) {
@@ -1936,14 +1974,24 @@ function confirmSlotChoice(aptId, slotKey) {
   setTimeout(() => {
     // Update the appointment with the chosen slot
     const apt = AppState.appointments.find(a => a.id === aptId) || AppState.lastBookedAppointment;
-    if (apt && apt.slotOptions && apt.slotOptions[slotKey]) {
-      apt.date = apt.slotOptions[slotKey].date;
-      apt.time = apt.slotOptions[slotKey].time;
+    if (apt) {
+      if (customDate) {
+        apt.date = customDate;
+        apt.time = customTime || apt.time;
+      } else if (apt.slotOptions && apt.slotOptions[slotKey]) {
+        apt.date = apt.slotOptions[slotKey].date;
+        apt.time = apt.slotOptions[slotKey].time;
+      }
       apt.slotChosen = true;
     }
     if (AppState.lastBookedAppointment && AppState.lastBookedAppointment.id === aptId) {
-      AppState.lastBookedAppointment.date = apt ? apt.date : AppState.lastBookedAppointment.date;
-      AppState.lastBookedAppointment.time = apt ? apt.time : AppState.lastBookedAppointment.time;
+      if (customDate) {
+        AppState.lastBookedAppointment.date = customDate;
+        AppState.lastBookedAppointment.time = customTime || AppState.lastBookedAppointment.time;
+      } else if (apt) {
+        AppState.lastBookedAppointment.date = apt.date;
+        AppState.lastBookedAppointment.time = apt.time;
+      }
       AppState.lastBookedAppointment.slotChosen = true;
     }
     saveAppointments();
@@ -1952,6 +2000,20 @@ function confirmSlotChoice(aptId, slotKey) {
     showToast('Appointment slot confirmed! Opening slip...');
     setTimeout(() => downloadAppointmentSlip(aptId), 700);
   }, 850);
+}
+
+function confirmCustomDateChoice(aptId, defaultTime) {
+  const dateInput = document.getElementById('custom-slot-date');
+  const chosenIso = dateInput ? dateInput.value : '';
+  let formatted = chosenIso;
+  if (chosenIso) {
+    const parts = chosenIso.split('-');
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      formatted = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+  }
+  confirmSlotChoice(aptId, 'custom', formatted, defaultTime);
 }
 
 function restartAssessment() {
@@ -2868,7 +2930,7 @@ function handlePatientLogin(e) {
 
   localStorage.setItem('carepoint_session', 'patient');
 
-  showToast(`Welcome back, ${AppState.patientProfile.name}!`);
+  showToast(`Welcome back, ${AppState.patientProfile ? AppState.patientProfile.name : 'Patient'}!`);
 
   navigateTo('patient-dashboard');
 
@@ -2901,6 +2963,12 @@ function handlePatientSignup(e) {
   };
 
   savePatientProfile();
+
+  // New account starts with zero appointment history
+
+  AppState.appointments = [];
+
+  saveAppointments();
 
 
 

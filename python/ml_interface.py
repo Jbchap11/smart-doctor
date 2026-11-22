@@ -13,8 +13,11 @@ so you (and the frontend) can test end-to-end.
 import json
 from pathlib import Path
 
-BASE_DIR = Path(__file__).parent
-MODEL_PATH = BASE_DIR.parent / "models" / "trained_model.joblib"
+BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR.parent
+
+MODEL_PATH = PROJECT_ROOT / "models" / "trained_model.joblib"
+PREPROCESSOR_PATH = PROJECT_ROOT / "models" / "preprocessing_pipeline.joblib"
 LABELS = ("Very Urgent", "Moderate", "Not Urgent")
 
 _model = None

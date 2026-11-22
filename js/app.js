@@ -1,4 +1,4 @@
-/**
+﻿/**
 
  * Smart Doctor - CarePoint Hospital Digital Platform
 
@@ -1014,134 +1014,151 @@ const M1_ML_Service = {
 
 
 
-    // 1. Age (must strictly be a Number)
+    // 1. Age: Always prioritize patient profile age (e.g. 30).
+    // If profile age doesn't exist, check Question 10. Default fallback: 30.
+    const pAge = (patientProfile && patientProfile.age) ? Number(patientProfile.age) : 0;
+    const q10Age = (answersMap[10] && answersMap[10].ageNum) ? Number(answersMap[10].ageNum) : 0;
+    const patientAge = pAge || q10Age || 30;
 
-    let age = (patientProfile && patientProfile.age) ? Number(patientProfile.age) : 38;
-
-    if (answersMap[10] && answersMap[10].ageNum) {
-
-      age = Number(answersMap[10].ageNum);
-
+    // 2. Gender: Prioritize patient profile gender ('Female' or 'Male')
+    let patientGender = 'Female';
+    if (patientProfile && patientProfile.gender) {
+      const g = String(patientProfile.gender).trim().toLowerCase();
+      patientGender = g.startsWith('m') ? 'Male' : 'Female';
     }
 
-
-
-    // 2. Gender ('Female' or 'Male')
-
-    const gender = (patientProfile && patientProfile.gender === 'Female') ? 'Female' : 'Male';
-
-
-
-    // 3. Comorbidities strictly from Ishika\'s permitted set
-
-    let comorbidities = 'None';
-
+    // 3. Condition: Comorbidities from Question 8
     const q8 = answersMap[8]?.id || '';
+    let mlComorbidities = 'None';
+    let displayCondition = 'None';
+    if (q8 === 'q8-1') {
+      mlComorbidities = 'Heart Disease';
+      displayCondition = 'Heart Disease / Stroke history';
+    } else if (q8 === 'q8-2') {
+      mlComorbidities = 'Diabetes, Hypertension';
+      displayCondition = 'Diabetes / Hypertension';
+    } else if (q8 === 'q8-3') {
+      mlComorbidities = 'Hypertension';
+      displayCondition = 'Other chronic condition';
+    } else {
+      mlComorbidities = 'None';
+      displayCondition = 'None';
+    }
 
-    if (q8 === 'q8-1') comorbidities = 'Heart Disease';
+    // 4. Primary, Secondary, Additional from actual questionnaire responses
+    const q1Opt = answersMap[1] || {};
+    const q1Flag = q1Opt.flag || '';
+    const q1Id = q1Opt.id || '';
 
-    else if (q8 === 'q8-2') comorbidities = 'Diabetes, Hypertension';
+    let displayPrimary = q1Opt.label || 'General Consultation';
+    if (q1Id === 'q1-1') displayPrimary = 'Chest Discomfort & Palpitations';
+    else if (q1Id === 'q1-2') displayPrimary = 'Severe Breathing Trouble / Wheezing';
+    else if (q1Id === 'q1-3') displayPrimary = 'Joint Pain / Bone Sprain';
+    else if (q1Id === 'q1-4') displayPrimary = 'Persistent Fever & Viral Symptoms';
+    else if (q1Id === 'q1-5') displayPrimary = 'Skin Rash / Allergic Reaction';
+    else if (q1Id === 'q1-6') displayPrimary = 'Routine Health Checkup';
 
-    else if (q8 === 'q8-3') comorbidities = 'Hypertension';
+    const q5Opt = answersMap[5] || {};
+    const q4Opt = answersMap[4] || {};
+    const q2Opt = answersMap[2] || {};
+    let displaySecondary = '';
 
+    if (q5Opt.id === 'q5-1') {
+      displaySecondary = 'High fever over 102°F (39°C) with chills';
+    } else if (q5Opt.id === 'q5-2') {
+      displaySecondary = 'Low-grade fever (99°F–101°F)';
+    } else if (q4Opt.id === 'q4-1') {
+      displaySecondary = 'Chest pressure / Shortness of breath at rest';
+    } else if (q4Opt.id === 'q4-2') {
+      displaySecondary = 'Mild shortness of breath on exertion';
+    } else if (q2Opt.id === 'q2-1') {
+      displaySecondary = 'Severe / Unbearable Pain (7–10)';
+    } else if (q2Opt.id === 'q2-2') {
+      displaySecondary = 'Moderate Pain (4–6)';
+    } else if (q2Opt.id === 'q2-3') {
+      displaySecondary = 'Mild Pain (1–3)';
+    } else {
+      displaySecondary = q2Opt.label || 'No severe secondary symptom';
+    }
 
+    const q7Opt = answersMap[7] || {};
+    const q9Opt = answersMap[9] || {};
+    const q6Opt = answersMap[6] || {};
+    const q3Opt = answersMap[3] || {};
+    let displayAdditional = '';
 
-    // 4. Map the 10 questions to one of Ishika\'s 10 trained symptom triplets
+    if (q7Opt.id === 'q7-1') {
+      displayAdditional = 'Sudden weakness / Numbness';
+    } else if (q7Opt.id === 'q7-2') {
+      displayAdditional = 'Dizziness & Headache';
+    } else if (q9Opt.id === 'q9-1') {
+      displayAdditional = 'Direct trauma / Deep contusion';
+    } else if (q9Opt.id === 'q9-2') {
+      displayAdditional = 'Minor scrape / Mild sprain';
+    } else if (q6Opt.id === 'q6-1' || q6Opt.id === 'q6-2') {
+      displayAdditional = 'Mobility significantly restricted';
+    } else if (q3Opt.label) {
+      displayAdditional = `Onset: ${q3Opt.label}`;
+    } else {
+      displayAdditional = 'None reported';
+    }
 
+    // 5. Medically sound mapping to Ishika's 10 ML symptom triplets
     let s1 = 'fever';
-
     let s2 = 'body pain';
-
     let s3 = 'cough';
 
-
-
-    const q1Flag = answersMap[1]?.flag || '';
-
-    const q4Id = answersMap[4]?.id || '';
-
-    const q5Id = answersMap[5]?.id || '';
-
-    const q7Id = answersMap[7]?.id || '';
-
-    const q9Id = answersMap[9]?.id || '';
-
-
-
-    if (q4Id === 'q4-1' || q1Flag === 'cardiac' || q1Flag === 'respiratory') {
-
+    if (q4Opt.id === 'q4-1' || q1Flag === 'cardiac' || q1Flag === 'respiratory') {
       s1 = 'breathing difficulty';
-
       s2 = 'wheezing';
-
       s3 = 'chest tightness';
-
-    } else if (q7Id === 'q7-1' || q7Id === 'q7-2') {
-
+    } else if (q7Opt.id === 'q7-1') {
       s1 = 'headache';
-
       s2 = 'dizziness';
-
       s3 = 'blurred vision';
-
-    } else if (q9Id === 'q9-1' || q1Flag === 'ortho') {
-
+    } else if (q5Opt.id === 'q5-1' && (q1Flag === 'ortho' || q2Opt.id === 'q2-1')) {
       s1 = 'high fever';
-
       s2 = 'joint pain';
-
       s3 = 'headache';
-
-    } else if (q5Id === 'q5-1') {
-
+    } else if (q5Opt.id === 'q5-1') {
       s1 = 'fever';
-
       s2 = 'chills';
-
       s3 = 'sweating';
-
-    } else if (q1Flag === 'general') {
-
+    } else if (q1Flag === 'ortho') {
       s1 = 'fever';
-
       s2 = 'body pain';
-
       s3 = 'cough';
-
+    } else if (q1Flag === 'general') {
+      s1 = 'fever';
+      s2 = 'body pain';
+      s3 = 'cough';
     } else if (q1Flag === 'derm') {
-
       s1 = 'cough';
-
       s2 = 'runny nose';
-
       s3 = 'sneezing';
-
+    } else if (q7Opt.id === 'q7-2') {
+      s1 = 'headache';
+      s2 = 'dizziness';
+      s3 = 'blurred vision';
     } else {
-
       s1 = 'thirst';
-
       s2 = 'fatigue';
-
       s3 = 'frequent urination';
-
     }
 
-
-
     return {
-
-      age,
-
-      gender,
-
-      comorbidities,
-
+      age: patientAge,
+      gender: patientGender,
+      comorbidities: mlComorbidities,
       symptom_1: s1,
-
       symptom_2: s2,
-
-      symptom_3: s3
-
+      symptom_3: s3,
+      displayAge: patientAge,
+      displayGender: patientGender,
+      displayCondition,
+      displayPrimary,
+      displaySecondary,
+      displayAdditional
     };
 
   },
@@ -1591,12 +1608,19 @@ function assignDoctorAndSlot(evaluation, features) {
   const aptId = `APT${Math.floor(10000 + Math.random() * 90000)}`;
 
   const patient = AppState.patientProfile || (typeof INITIAL_PATIENT !== 'undefined' ? INITIAL_PATIENT : {});
+  const resolvedAge = (patient && patient.age) ? Number(patient.age) : (features.displayAge || features.age || 30);
+  const resolvedGender = (patient && patient.gender) ? patient.gender : (features.displayGender || features.gender || 'Female');
+  const resolvedName = (patient && patient.name) ? patient.name : 'Patient';
+
+  const triageConcern = features.displayPrimary 
+    ? `${features.displayPrimary} (${features.displaySecondary || 'Clinical consultation'})`
+    : `${s1 ? s1.charAt(0).toUpperCase() + s1.slice(1) : 'Clinical triage review'} (${s2 || 'accompanying symptoms'})`;
 
   const newAppointment = {
     id: aptId,
-    patientName: patient.name || 'John Doe',
-    patientAge: features.age || patient.age || 38,
-    patientGender: features.gender || patient.gender || 'Male',
+    patientName: resolvedName,
+    patientAge: resolvedAge,
+    patientGender: resolvedGender,
     patientPhone: patient.phone || '+91 98765 43210',
     doctorId: matchedDoc.id || 'doc-1',
     doctorName: matchedDoc.name || 'Dr. Meera Iyer',
@@ -1611,7 +1635,7 @@ function assignDoctorAndSlot(evaluation, features) {
     priority: evaluation ? evaluation.level : 'Moderate',
     priorityColor: evaluation ? evaluation.badgeClass : 'moderate',
     status: 'Confirmed',
-    concern: `${s1 ? s1.charAt(0).toUpperCase() + s1.slice(1) : 'Clinical triage review'} (${s2 || 'accompanying symptoms'})`,
+    concern: triageConcern,
     urgencyReason: `AI Scheduled Slot (${windowBadge})`,
     slotOptions,
     slotChosen: false
@@ -1852,15 +1876,15 @@ function renderAssessmentResult() {
 
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem; font-size: 0.8125rem;">
 
-            <div><span style="color: var(--text-muted);">Age & Sex:</span> <strong style="color: var(--c-navy); display: block;">${evalResult.features.age || '—'} yrs, ${evalResult.features.gender || '—'}</strong></div>
+            <div><span style="color: var(--text-muted);">Age &amp; Sex:</span> <strong style="color: var(--c-navy); display: block;">${evalResult.features.displayAge || (AppState.patientProfile && AppState.patientProfile.age) || evalResult.features.age || 30} yrs, ${evalResult.features.displayGender || (AppState.patientProfile && AppState.patientProfile.gender) || evalResult.features.gender || 'Female'}</strong></div>
 
-            <div><span style="color: var(--text-muted);">Condition:</span> <strong style="color: var(--c-navy); display: block;">${evalResult.features.comorbidities || 'None'}</strong></div>
+            <div><span style="color: var(--text-muted);">Condition:</span> <strong style="color: var(--c-navy); display: block;">${evalResult.features.displayCondition || evalResult.features.comorbidities || 'None'}</strong></div>
 
-            <div><span style="color: var(--text-muted);">Primary:</span> <strong style="color: var(--c-navy); display: block;">${evalResult.features.symptom_1 || '—'}</strong></div>
+            <div><span style="color: var(--text-muted);">Primary:</span> <strong style="color: var(--c-navy); display: block;">${evalResult.features.displayPrimary || evalResult.features.symptom_1 || '—'}</strong></div>
 
-            <div><span style="color: var(--text-muted);">Secondary:</span> <strong style="color: var(--c-navy); display: block;">${evalResult.features.symptom_2 || '—'}</strong></div>
+            <div><span style="color: var(--text-muted);">Secondary:</span> <strong style="color: var(--c-navy); display: block;">${evalResult.features.displaySecondary || evalResult.features.symptom_2 || '—'}</strong></div>
 
-            <div><span style="color: var(--text-muted);">Additional:</span> <strong style="color: var(--c-navy); display: block;">${evalResult.features.symptom_3 || '—'}</strong></div>
+            <div><span style="color: var(--text-muted);">Additional:</span> <strong style="color: var(--c-navy); display: block;">${evalResult.features.displayAdditional || evalResult.features.symptom_3 || '—'}</strong></div>
 
           </div>
 
@@ -2160,8 +2184,8 @@ function downloadAppointmentSlip(aptId) {
           Patient Details
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5rem; font-size: 0.8125rem;">
-          <div><span style="color: #6D8196; display: block; font-size: 0.6875rem;">Patient Name:</span> <strong>${apt.patientName || 'John Doe'}</strong></div>
-          <div><span style="color: #6D8196; display: block; font-size: 0.6875rem;">Age / Sex:</span> <strong>${apt.patientAge || '38'} Yrs / ${apt.patientGender || 'Male'}</strong></div>
+          <div><span style="color: #6D8196; display: block; font-size: 0.6875rem;">Patient Name:</span> <strong>${apt.patientName || (AppState.patientProfile && AppState.patientProfile.name) || 'Patient'}</strong></div>
+          <div><span style="color: #6D8196; display: block; font-size: 0.6875rem;">Age / Sex:</span> <strong>${apt.patientAge || (AppState.patientProfile && AppState.patientProfile.age) || 30} Yrs / ${apt.patientGender || (AppState.patientProfile && AppState.patientProfile.gender) || 'Female'}</strong></div>
           <div><span style="color: #6D8196; display: block; font-size: 0.6875rem;">Contact:</span> <strong>${apt.patientPhone || '+91 98765 43210'}</strong></div>
           <div><span style="color: #6D8196; display: block; font-size: 0.6875rem;">Triage Concern:</span> <strong style="text-overflow: ellipsis; white-space: nowrap; overflow: hidden; display: block;">${apt.concern || 'Clinical consultation'}</strong></div>
         </div>
